@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Craiova Parking Watch",
+  "version": "1.0.1",
+  "description": "Residential parking auction registration monitoring and zero-registration alternatives",
+  "permissions": [
+    "storage",
+    "alarms",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://parcari-ticketing.primariacraiova.ro/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Parking Watch"
+  }
+}
