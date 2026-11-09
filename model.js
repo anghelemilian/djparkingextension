@@ -1,5 +1,22 @@
 'use strict';
 globalThis.ParkingModel = {
+ auctionPhase(record) {
+  if (Number.isFinite(record.end) && record.end <= Date.now()) return 'ended';
+  switch (record.status) {
+   case 'public': return 'public';
+   case 'preauction': return 'scheduled';
+   case 'ongoing': return 'ongoing';
+   case 'archived': return 'archived';
+   default: return 'unknown';
+  }
+ },
+ filterSpaces(summary, query = '', scope = 'all') {
+  const text = String(query).trim().toLocaleLowerCase();
+  return summary.spaces.filter(s => (!text || String(s.number).toLocaleLowerCase().includes(text) ||
+   String(s.lotName).toLocaleLowerCase().includes(text)) &&
+   (scope !== 'watched' || summary.watched.some(w => w.id === s.id && w.lotId === s.lotId)) &&
+   (scope !== 'mine' || summary.own.some(t => t.space?.id === s.id && t.space?.lotId === s.lotId)));
+ },
  currentDemand(spot) {
   return spot.publicAuction === true && spot.registrationState !== 'closed' &&
    Number.isSafeInteger(spot.auctionId) && Number.isFinite(spot.auctionEnd) &&

@@ -32,6 +32,15 @@ for (const [auctionState, label] of [['scheduled','Auction scheduled'],['ongoing
  html=render({...snapshot,properties:[{id:1001,lots:[{...lot,auctionState}]}]});
  assert.ok(html.includes(label));
 }
+html=render({...snapshot,ownAuctionStatus:'ok',ownAuctions:[{auctionId:4001,itemId:5001,spotId:3001,number:'7',status:'preauction',start:Date.now()+86400000,end:Date.now()+172800000}]});
+assert.match(html,/My auction timeline/);
+assert.match(html,/Scheduled/);
+assert.match(html,/https:\/\/parcari-ticketing.primariacraiova.ro\/licitatie\/4001\/5001/);
+assert.ok(html.indexOf('Nearby parking spaces')<html.indexOf('My open applications'),'inventory takes precedence over secondary cards');
+node('search').value='8';html=render(snapshot);
+assert.doesNotMatch(html,/data-spot="3001"/);assert.match(html,/data-spot="3002"/);
+node('search').value='not-present';html=render(snapshot);assert.match(html,/No spaces match/);
+node('search').value='';
 console.log('All popup tests passed');
 (async()=>{
  ctx.chrome.runtime.sendMessage=async()=>{throw Error('Service worker unavailable');};

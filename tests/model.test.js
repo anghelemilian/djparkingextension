@@ -61,3 +61,13 @@ assert.equal(model.summarize(unverified,1001,watching).alerts.length,0);
 assert.equal(model.changes(make(1),unverified).length,0);
 
 console.log('All model tests passed');
+
+const all=model.summarize(make(2),1001,watching);
+assert.equal(model.filterSpaces(all,'a','all').length,5);
+assert.equal(model.filterSpaces(all,'7','watched').length,1);
+assert.equal(model.filterSpaces(all,'9','watched').length,0);
+assert.equal(model.filterSpaces(all,'','mine').length,1);
+assert.equal(model.auctionPhase({status:'preauction',end:Date.now()+86400000}),'scheduled');
+assert.equal(model.auctionPhase({status:'ongoing',end:1}),'ended');
+assert.equal(model.auctionPhase({status:'archived'}),'archived');
+assert.equal(model.auctionPhase({status:'not-documented'}),'unknown');

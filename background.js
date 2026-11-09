@@ -41,7 +41,7 @@ async function collect(radius) {
  const digest = await crypto.subtle.digest('SHA-256',
   new TextEncoder().encode('craiova-parking-extension-account:' + person._id));
  const accountKey = Array.from(new Uint8Array(digest), n => n.toString(16).padStart(2, '0')).join('');
- const out = { schemaVersion: 2, accountKey, properties: [], tickets: [], ticketStatus: 'unknown', warnings: [], at: Date.now() };
+ const out = { schemaVersion: 2, accountKey, properties: [], ownAuctions: [], ownAuctionStatus: 'unknown', tickets: [], ticketStatus: 'unknown', warnings: [], at: Date.now() };
 
  // A valid account with no linked addresses must not receive anybody else's lot.
  if (!ids.length) return out;
@@ -144,6 +144,51 @@ async function collect(radius) {
    out.properties.push({ id, name: 'Linked building ' + id, inventoryStatus: 'unknown', lots: [] });
   }
  }));
+ // Optional account-wide lifecycle feed used by the official /licitatii view.
+ // It never supplies allocation or replaces the building inventory/counts.
+ try {
+  const data = await get('/api/auctions');
+  if (!Array.isArray(data?.auctions_registrations)) throw Error('Unexpected own-auction response');
+  out.ownAuctionStatus = 'ok';
+  const positive = n => Number.isSafeInteger(n) && n > 0;
+  const timestamp = value => typeof value === 'string' && /(?:Z|[+-]\d{2}:\d{2})$/i.test(value) &&
+   Number.isFinite(Date.parse(value)) ? Date.parse(value) : null;
+  const seen = new Set();
+  for (const row of data.auctions_registrations.slice(0, 200)) {
+   const auction = row?.auction;
+   const items = Array.isArray(auction?.items) ? auction.items.filter(item => item && positive(row?.id_auction_item) && item.id === row.id_auction_item && !item.deleted_at) : [];
+   const item = items.length === 1 ? items[0] : null;
+   const spotId = item?.id_res_parking_spot ?? item?.residence_parking_spot?.id;
+   if (!positive(row?.id_auction) || row.id_auction !== auction?.id || !positive(row.id_auction_item) ||
+       !item || !positive(spotId) ||
+       (item.residence_parking_spot?.id != null && item.residence_parking_spot.id !== spotId)) {
+    out.ownAuctionStatus = 'partial'; continue;
+   }
+   const key = row.id_auction + '/' + row.id_auction_item;
+   if (seen.has(key)) {
+    out.ownAuctionStatus = 'partial';
+    out.ownAuctions = out.ownAuctions.filter(r => r.auctionId + '/' + r.itemId !== key);
+    continue;
+   }
+   seen.add(key);
+   // Strict allowlist. No prices, bids, owners, geometry or raw records leave the tab.
+   out.ownAuctions.push({ auctionId: row.id_auction, itemId: row.id_auction_item, spotId,
+    number: String(item.residence_parking_spot?.number ?? 'Unknown number'),
+    status: ['public','preauction','ongoing','archived'].includes(auction.auction_status) ? auction.auction_status : 'unknown',
+    start: timestamp(auction.auction_start_date_time), end: timestamp(auction.auction_end_date_time)
+   });
+  }
+  if (data.auctions_registrations.length > 200) out.ownAuctionStatus = 'partial';
+  if (out.ownAuctionStatus === 'partial') out.warnings.push('Own-auction list partially usable; invalid or excess records were omitted.');
+ } catch (e) {
+  out.ownAuctionStatus = 'unknown';
+  out.ownAuctions = [];
+  out.warnings.push('Own auction timeline: ' + e.message);
+ }
+ // Recheck after optional feeds so an account switch during collection cannot
+ // publish a snapshot assembled across two sessions. Raw identity stays here.
+ const verified = await get('/api/person');
+ if (verified?._id !== person._id || verified.active === false) throw Error('Signed-in account changed during refresh; retry.');
  out.properties.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
  return out;
 }

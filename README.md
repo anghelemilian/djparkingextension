@@ -2,7 +2,7 @@
 
 Chrome Manifest V3 extension showing **authenticated building, lot and numbered-space inventory**, plus auction registration demand when it can be established. Inventory remains visible outside the selection period and does not require open applications or public auctions. This is read-only: no applications, bids, reservations or portal changes.
 
-## Install or reload 1.0.3
+## Install or reload 1.1.0
 
 1. Download/check out the extension revision and extract it if needed.
 2. Open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select the directory containing `manifest.json`. For an existing unpacked installation, update that same directory and click its **Reload** button.
@@ -57,3 +57,13 @@ Tests cover off-season/no-auction inventory, malformed optional metadata, linked
 ## API discovery and 1.0.3
 
 See [the frontend API map](docs/API-DISCOVERY.md) and [evidence catalogue](docs/api-call-sites.yaml) for 46 observed call signatures, method-specific side effects and lifecycle meanings. Version 1.0.3 adds evidenced preauction/ongoing/archived labels and distinguishes missing/empty auction data without adding API calls or permissions. Archived counts are historical; archived auctions do not prove allocation.
+
+## 1.1.0: off-season browsing and own auction timeline
+
+Numbered inventory now appears before secondary status cards. Search by number or lot name, or show only watched spaces or spaces with your open applications. Filters are popup-local and do not change the radius, stored watches or portal data. Counts always describe returned inventory, even when a filter hides some spaces. Per-space allocation/count details and the dated registration notice can be expanded when needed.
+
+A separate **My auction timeline** reads the authenticated `GET /api/auctions` feed used by the portal's `/licitatii` page. It shows account-wide registrations, including items outside the current building/radius. Only exact matching auction and auction-item IDs are accepted; deleted, mismatched or ambiguous items and duplicate rows are rejected. At most 200 feed rows are processed; omissions make the list partial. Failed/malformed feeds remain explicitly unavailable and do not hide building inventory. A complete empty list says only that no auction registrations were returned. It does not cover ordinary tickets, waitlists or authorizations.
+
+Reduced timeline fields stored locally: auction/item/space IDs, space number, allowlisted auction status and timezone-qualified start/end timestamps. No prices, bids, other participants, contact details, geometry, national identifiers or raw records leave the tab. Timeline records never replace inventory counts, registration eligibility or allocation. A manual link opens the exact auction in the official portal; the extension does not bid or obtain WebSocket tokens. The signed-in person is rechecked after collection, rejecting a snapshot if identity changed or verification fails during refresh.
+
+The model, collector and popup tests cover the new feed, malformed/null/duplicate entries, mismatched item/spot IDs, endpoint failure, empty lists, privacy reduction, mid-refresh account changes and filtering. A synthetic browser check verifies search, watched filtering, timeline display and popup width. Authenticated live `/api/auctions` compatibility remains unverified; unexpected shapes are handled conservatively.

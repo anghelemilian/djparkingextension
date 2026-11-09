@@ -25,7 +25,8 @@ function harness(routes) {
    requests.push(url);
    assert.equal(options.credentials, 'include');
    assert.equal(options.method, undefined); // read-only default GET
-   const data = routes[url];
+   const entry = routes[url];
+   const data = typeof entry === 'function' ? entry() : entry;
    return {ok: data !== undefined && data !== 'FAIL', status: data === 'FAIL' ? 401 : 200,
     async json() { return structuredClone(data); }};
   }, importScripts() { vm.runInContext(model, ctx); }
@@ -103,5 +104,34 @@ const routesFor = lot => ({'/api/person':person, '/api/ticket/1/5':{items:[]},
  h = harness({...routesFor(lot), '/api/ticket/1/5':'FAIL'}); s = await h.collect();
  assert.equal(s.properties.length,1); assert.equal(s.ticketStatus,'unknown');
  assert.ok(!JSON.stringify(s).includes(person._id));
+ const registration = {id_auction:4001,id_auction_item:5001, personal:'DO-NOT-RETAIN', auction:{id:4001,
+  auction_status:'preauction',auction_start_date_time:'2099-01-01T00:00:00Z',auction_end_date_time:'2099-01-02T00:00:00Z',
+  items:[{id:5001,id_res_parking_spot:3001,residence_parking_spot:{id:3001,number:'7',owner:'DO-NOT-RETAIN'},previous_bids:[{name:'DO-NOT-RETAIN'}]}]}};
+ h=harness({...routesFor(lot),'/api/auctions':{auctions_registrations:[registration],waitlist:[]}});s=await h.collect();
+ assert.equal(s.ownAuctionStatus,'ok'); assert.equal(s.ownAuctions.length,1);
+ assert.equal(s.ownAuctions[0].spotId,3001); assert.equal(s.ownAuctions[0].auctionId,4001);
+ assert.ok(!JSON.stringify(s).includes('DO-NOT-RETAIN'));
+ assert.equal(s.properties[0].lots[0].spots[0].count,null,'own timeline never invents or overwrites inventory counts');
+ for(const bad of [null,{}, {auctions_registrations:null}]) {
+  h=harness({...routesFor(lot),'/api/auctions':bad});s=await h.collect();
+  assert.equal(s.ownAuctionStatus,'unknown');assert.equal(s.properties.length,1);
+ }
+ for(const badRow of [null,{...registration,id_auction:999}, {...registration,id_auction_item:999},
+  {...registration,auction:{...registration.auction,items:[...registration.auction.items,...registration.auction.items]}}]) {
+  h=harness({...routesFor(lot),'/api/auctions':{auctions_registrations:[badRow]}});s=await h.collect();
+  assert.equal(s.ownAuctions.length,0,'never fall back to first auction item or mismatched parent');
+  assert.equal(s.ownAuctionStatus,'partial');
+ }
+ h=harness({...routesFor(lot),'/api/auctions':{auctions_registrations:[]}});s=await h.collect();
+ assert.equal(s.ownAuctionStatus,'ok');assert.equal(s.ownAuctions.length,0);
+ const conflict = {...registration,auction:{...registration.auction,auction_status:'archived'}};
+ h=harness({...routesFor(lot),'/api/auctions':{auctions_registrations:[registration,conflict]}});s=await h.collect();
+ assert.equal(s.ownAuctionStatus,'partial');assert.equal(s.ownAuctions.length,0,'conflicting duplicate rows are suppressed');
+ h=harness({...routesFor(lot),'/api/auctions':{auctions_registrations:[{auction:{items:[null]}},registration]}});s=await h.collect();
+ assert.equal(s.ownAuctionStatus,'partial','malformed row cannot mark an interrupted list complete');
+ assert.equal(s.ownAuctions.length,1,'valid later rows survive malformed optional records');
+ let verificationReads=0;
+ h=harness({...routesFor(lot),'/api/person':()=>({...person,_id:++verificationReads===1?'account-a':'account-b'}),'/api/auctions':{auctions_registrations:[]}});
+ await assert.rejects(h.collect(),/account changed/i,'mid-refresh account switch rejects mixed results');
  console.log('All background tests passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});
