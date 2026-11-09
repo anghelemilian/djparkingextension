@@ -133,5 +133,10 @@ const routesFor = lot => ({'/api/person':person, '/api/ticket/1/5':{items:[]},
  let verificationReads=0;
  h=harness({...routesFor(lot),'/api/person':()=>({...person,_id:++verificationReads===1?'account-a':'account-b'}),'/api/auctions':{auctions_registrations:[]}});
  await assert.rejects(h.collect(),/account changed/i,'mid-refresh account switch rejects mixed results');
+ const scheduledAuction={id:6001,auction_status:'preauction',auction_start_date_time:'2099-01-01T00:00:00Z',auction_end_date_time:'2099-01-02T00:00:00Z',items:[{id:7001,id_res_parking_spot:3001,status:'active'},{id:7002,id_res_parking_spot:9999,status:'active'}]};
+ h=harness(routesFor({...lot,auctions:[...ended.auctions,scheduledAuction]}));s=await h.collect();
+ assert.equal(s.properties[0].lots[0].auctionEntries.length,1,'only exact known spaces linked to valid auction items');
+ assert.equal(s.properties[0].lots[0].auctionEntries[0].auctionId,6001);
+ assert.equal(s.properties[0].lots[0].auctionEntries[0].itemId,7001);
  console.log('All background tests passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});

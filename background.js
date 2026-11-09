@@ -115,8 +115,27 @@ async function collect(radius) {
      if (items.has(key)) { items.set(key, null); continue; }
      items.set(key, item);
     }
+    // Upcoming-space discovery uses every explicit auction item, independently
+    // of the single auction selected above for registration-count provenance.
+    const knownSpots = Array.isArray(lot.residence_parking_spots) ? lot.residence_parking_spots : [];
+    const auctionEntries = [];
+    const positive = n => Number.isSafeInteger(n) && n > 0;
+    for (const candidate of auctions) {
+     if (!positive(candidate.id) || !Array.isArray(candidate.items)) continue;
+     const valid = candidate.items.filter(item => item && !item.deleted_at && positive(item.id) && positive(item.id_res_parking_spot));
+     for (const item of valid) {
+      if (valid.filter(i => i.id === item.id).length !== 1 ||
+          valid.filter(i => i.id_res_parking_spot === item.id_res_parking_spot).length !== 1 ||
+          knownSpots.filter(s => s && !s.deleted_at && s.id === item.id_res_parking_spot).length !== 1) continue;
+      auctionEntries.push({ auctionId: candidate.id, itemId: item.id, spotId: item.id_res_parking_spot,
+       status: ['public','preauction','ongoing','archived'].includes(candidate.auction_status) ? candidate.auction_status : 'unknown',
+       itemStatus: item.status === 'inactive' ? 'inactive' : item.status === 'active' ? 'active' : 'unknown',
+       start: timestamp(candidate.auction_start_date_time), end: timestamp(candidate.auction_end_date_time)
+      });
+     }
+    }
     return {
-     id: lot.id, name: String(lot.name || 'Parking lot'), registrationState, inventoryStatus,
+     id: lot.id, name: String(lot.name || 'Parking lot'), registrationState, inventoryStatus, auctionEntries,
      auctionState, auctionId, auctionEnd: end, auctionData: lot.auctions == null ? 'not-returned' : Array.isArray(lot.auctions) && !lot.auctions.length ? 'empty' : 'returned',
      distance: lot.distance != null && lot.distance !== '' && Number.isFinite(Number(lot.distance)) ? Number(lot.distance) : null,
      spots: (Array.isArray(lot.residence_parking_spots) ? lot.residence_parking_spots : [])
@@ -174,6 +193,7 @@ async function collect(radius) {
    // Strict allowlist. No prices, bids, owners, geometry or raw records leave the tab.
    out.ownAuctions.push({ auctionId: row.id_auction, itemId: row.id_auction_item, spotId,
     number: String(item.residence_parking_spot?.number ?? 'Unknown number'),
+    itemStatus: item.status === 'inactive' ? 'inactive' : item.status === 'active' ? 'active' : 'unknown',
     status: ['public','preauction','ongoing','archived'].includes(auction.auction_status) ? auction.auction_status : 'unknown',
     start: timestamp(auction.auction_start_date_time), end: timestamp(auction.auction_end_date_time)
    });

@@ -41,6 +41,16 @@ node('search').value='8';html=render(snapshot);
 assert.doesNotMatch(html,/data-spot="3001"/);assert.match(html,/data-spot="3002"/);
 node('search').value='not-present';html=render(snapshot);assert.match(html,/No spaces match/);
 node('search').value='';
+const upcomingSnapshot={...snapshot,properties:[{id:1001,lots:[{...lot,auctionEntries:[{auctionId:6001,itemId:7001,spotId:3001,status:'preauction',start:Date.now()+86400000,end:Date.now()+172800000,itemStatus:'active'}]}]}]};
+html=render(upcomingSnapshot);
+assert.match(html,/Auction spaces near this building/);
+assert.match(html,/Scheduled by the portal/);
+assert.match(html,/licitatie\/6001\/7001/);
+assert.match(html,/spot [^"]*scheduled/);
+node('scope').value='scheduled';html=render(upcomingSnapshot);
+assert.match(html,/data-spot="3001"/);assert.doesNotMatch(html,/data-spot="3002"/);
+node('scope').value='all';
+html=render(snapshot);assert.match(html,/No scheduled auction spaces confirmed/);
 console.log('All popup tests passed');
 (async()=>{
  ctx.chrome.runtime.sendMessage=async()=>{throw Error('Service worker unavailable');};

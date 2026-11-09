@@ -10,11 +10,50 @@ globalThis.ParkingModel = {
    default: return 'unknown';
   }
  },
+ auctionSpaces(snapshot, propertyId) {
+  const property = (snapshot?.properties || []).find(p => String(p.id) === String(propertyId));
+  const spaces = (property?.lots || []).flatMap(lot => (lot.spots || []).map(spot =>
+   ({ ...spot, lotId: lot.id, lotName: lot.name, distance: lot.distance })));
+  const records = [];
+  for (const lot of property?.lots || []) for (const row of lot.auctionEntries || []) {
+   const matches = spaces.filter(s => s.id === row.spotId && s.lotId === lot.id);
+   if (matches.length === 1) records.push({ ...row, space: matches[0], source: 'Building inventory' });
+  }
+  for (const row of snapshot?.ownAuctions || []) {
+   const matches = spaces.filter(s => s.id === row.spotId);
+   if (matches.length === 1) records.push({ ...row, space: matches[0], source: 'Your auction registration' });
+  }
+  const merged = new Map(), conflicts = new Set();
+  for (const row of records) {
+   if (!Number.isSafeInteger(row.auctionId) || row.auctionId <= 0 || !Number.isSafeInteger(row.itemId) || row.itemId <= 0) continue;
+   const key = row.auctionId + '/' + row.itemId;
+   if (Number.isFinite(row.start) && Number.isFinite(row.end) && row.end <= row.start) { conflicts.add(key); continue; }
+   const old = merged.get(key);
+   if (old) {
+    if (old.spotId !== row.spotId || old.space.lotId !== row.space.lotId ||
+        old.status !== row.status ||
+        (old.itemStatus === 'inactive') !== (row.itemStatus === 'inactive') ||
+        ['start','end'].some(k => Number.isFinite(old[k]) && Number.isFinite(row[k]) && old[k] !== row[k])) {
+     conflicts.add(key); continue;
+    }
+    merged.set(key, { ...old, start: old.start ?? row.start, end: old.end ?? row.end,
+     source: old.source === row.source ? old.source : 'Both portal sources' });
+   } else merged.set(key, row);
+  }
+  for (const [key,row] of merged) {
+   if (Number.isFinite(row.start) && Number.isFinite(row.end) && row.end <= row.start) conflicts.add(key);
+  }
+  const rows = [...merged.entries()].filter(([key,row]) => !conflicts.has(key) && row.itemStatus !== 'inactive' && row.space.status !== 'inactive')
+   .map(([,row]) => ({ ...row, number: row.space.number, lotId: row.space.lotId, lotName: row.space.lotName, phase: this.auctionPhase(row) }))
+   .sort((a,b) => (a.start ?? Infinity) - (b.start ?? Infinity) || a.lotName.localeCompare(b.lotName) || String(a.number).localeCompare(String(b.number),undefined,{numeric:true}));
+  return { scheduled: rows.filter(r => r.phase === 'scheduled'), ongoing: rows.filter(r => r.phase === 'ongoing'), conflicts: conflicts.size };
+ },
  filterSpaces(summary, query = '', scope = 'all') {
   const text = String(query).trim().toLocaleLowerCase();
   return summary.spaces.filter(s => (!text || String(s.number).toLocaleLowerCase().includes(text) ||
    String(s.lotName).toLocaleLowerCase().includes(text)) &&
    (scope !== 'watched' || summary.watched.some(w => w.id === s.id && w.lotId === s.lotId)) &&
+   (scope !== 'scheduled' || summary.upcoming.scheduled.some(r => r.spotId === s.id && r.lotId === s.lotId)) &&
    (scope !== 'mine' || summary.own.some(t => t.space?.id === s.id && t.space?.lotId === s.lotId)));
  },
  currentDemand(spot) {
@@ -55,7 +94,7 @@ globalThis.ParkingModel = {
       })
    : [];
   return {
-   property, spaces, auctioned, own, watched, monitored, competing, alerts, alternatives, mode, ticketStatus,
+   upcoming: this.auctionSpaces(snapshot, propertyId), property, spaces, auctioned, own, watched, monitored, competing, alerts, alternatives, mode, ticketStatus,
    zero: auctioned.filter(s => s.count === 0).length,
    registered: auctioned.filter(s => s.count > 0).length,
    multiple: auctioned.filter(s => s.count > 1).length

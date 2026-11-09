@@ -35,6 +35,17 @@ function render(){
  const countLabel=spot=>!Number.isInteger(spot.count)?'Registrations unknown':
   (spot.auctionState==='ended'||spot.auctionState==='archived'||spot.countKind==='historical'?'Historical: ':ParkingModel.currentDemand(spot)?'':'Reported, timing unverified: ')+spot.count+' registrations (auction '+spot.auctionId+')';
  html+='<section class="card"><h2>Building parking inventory</h2><div class="stats"><div class="stat"><small>Lots returned</small><b>'+model.property.lots.length+'</b></div><div class="stat"><small>Numbered spaces returned</small><b>'+model.spaces.length+'</b></div><div class="stat"><small>Current demand known</small><b>'+model.auctioned.length+'</b></div></div><p class="hint">Inventory is independent of applications and auctions. Missing results do not prove there are no spaces. Zero registrations never means free or allocated.</p></section>';
+ const auctionDate=value=>Number.isFinite(value)?new Date(value).toLocaleString():'Date unavailable';
+ html+='<section class="card auction-spaces"><h2>Auction spaces near this building</h2><p class="hint">Exact items reported by the portal, within this building/radius. Multiple registrations alone do not confirm an auction. This is not a citywide list.</p>';
+ if(model.upcoming.conflicts)html+='<p class="error">Conflicting or invalid portal records were omitted. Check the official portal.</p>';
+ html+='<h3>Scheduled by the portal ('+model.upcoming.scheduled.length+')</h3>';
+ if(!model.upcoming.scheduled.length)html+='<p>No scheduled auction spaces confirmed in the returned data. More may be announced after application verification.</p>';
+ const auctionEntry=row=>'<div class="entry"><strong>'+safe(row.lotName)+' · #'+safe(row.number)+'</strong><p class="hint">Bidding starts: '+safe(auctionDate(row.start))+'<br>Ends: '+safe(auctionDate(row.end))+'<br>Source: '+safe(row.source)+' · Auction '+safe(row.auctionId)+'</p>'+
+  (Number.isFinite(row.start)&&row.start<Date.now()&&row.phase==='scheduled'?'<p class="hint">Portal still reports scheduled, but the start date has passed. Check its latest status.</p>':'')+
+  '<a target="_blank" rel="noopener noreferrer" href="https://parcari-ticketing.primariacraiova.ro/licitatie/'+row.auctionId+'/'+row.itemId+'">View auction in official portal</a></div>';
+ html+=model.upcoming.scheduled.map(auctionEntry).join('');
+ if(model.upcoming.ongoing.length)html+='<h3>Bidding in progress ('+model.upcoming.ongoing.length+')</h3>'+model.upcoming.ongoing.map(auctionEntry).join('');
+ html+='</section>';
  let secondaryHtml='';
  if(Date.now()>=Date.parse('2026-11-09T00:00:00+02:00'))secondaryHtml+='<section class="card"><details><summary>19 October–8 November 2026 registration period ended</summary><p class="hint">The announced 19 October–8 November 2026 selection period has closed. Verification, allocation and possible auctions follow separately. This dated notice does not establish the current state of every lot or future sessions. <a href="https://parcari.primariacraiova.ro/comunicate/" target="_blank">Municipality announcements</a></p></details></section>';
  if(model.auctioned.length){
@@ -43,7 +54,7 @@ function render(){
  secondaryHtml+='<section class="card"><h2>My open applications</h2>'+(model.own.length?model.own.map(t=>'<div class="entry"><strong>'+safe(t.space?.lotName||t.lotId)+' · #'+safe(t.space?.number||t.spotId)+'</strong><p class="hint">'+safe(t.space?countLabel(t.space):'Space inventory unavailable')+' · Requested regime: '+safe(t.regime||'not specified')+'</p></div>').join(''):'<p class="hint">'+(model.ticketStatus==='ok'?'No open auction ticket returned for this building. Closed applications and allocations are not established by this.':'Ticket lookup incomplete. Application status unknown; inventory remains available.')+'</p>')+'</section>';
  if(model.alerts.length)secondaryHtml+='<section class="card alert"><h2>Competition detected</h2><p>'+model.alerts.map(s=>safe(s.lotName)+' #'+safe(s.number)+' has '+s.count+' registrations').join('; ')+'</p></section>';
  if(model.alternatives.length)secondaryHtml+='<section class="card"><h2>Zero-registration candidates</h2><p class="hint">Not verified vacancies. Check dates, regime and eligibility in the portal.</p>'+model.alternatives.map(s=>'<div class="entry">'+safe(s.lotName)+' · #'+safe(s.number)+' · '+safe(distance(s.distance))+'</div>').join('')+'</section>';
- html+='<section class="card"><h2>Nearby parking spaces</h2><p class="hint">Colors show current registration demand only: green 0, blue 1, red 2+. Grey means unknown or historical demand. Allocation is listed separately. Star: watched. Click any numbered space to watch/unwatch.</p>';
+ html+='<section class="card"><h2>Nearby parking spaces</h2><p class="hint">Colors show current registration demand only: green 0, blue 1, red 2+. Grey means unknown or historical demand. Allocation is listed separately. Purple underline: scheduled auction item. Star: watched. Click any numbered space to watch/unwatch.</p>';
  html+='<p class="hint">Showing '+visible.length+' of '+model.spaces.length+' returned spaces. '+model.spaces.filter(s=>!Number.isInteger(s.count)).length+' without reported registration counts; '+model.spaces.filter(s=>s.allocation!=="unallocated").length+' with allocation unverified.</p>';
  if(model.spaces.length&&!visible.length)html+='<p>No spaces match this search/filter. Clear the search or choose All spaces.</p>';
  if(model.property.inventoryStatus==='unknown')html+='<p>Parking-lot inventory unavailable. The linked building is verified, but no lot count can be confirmed.</p>';
@@ -59,9 +70,10 @@ function render(){
    const normalized=model.spaces.find(s=>s.id===spot.id&&s.lotId===lot.id)||spot;
    const mine=model.own.some(t=>String(t.spotId)===String(spot.id)&&String(t.lotId)===String(lot.id));
    const watched=(state.watches||[]).some(w=>String(w.propertyId)===String(propertyId)&&String(w.lotId)===String(lot.id)&&String(w.spotId)===String(spot.id));
+   const scheduled=model.upcoming.scheduled.some(r=>r.spotId===spot.id&&r.lotId===lot.id);
    const kind=!ParkingModel.currentDemand(normalized)?'':spot.count===0?'zero':spot.count===1?'one':'multi';
-   const label='Space #'+spot.number+'; '+allocationLabel(spot)+'; '+countLabel(normalized)+'; '+(spot.type||'type unknown');
-   html+='<button type="button" class="spot '+kind+(mine?' mine':'')+(watched?' watched':'')+'" data-property="'+safe(propertyId)+'" data-lot="'+safe(lot.id)+'" data-spot="'+safe(spot.id)+'" aria-pressed="'+watched+'" aria-label="'+safe(label)+'" title="'+safe('Click to '+(watched?'unwatch: ':'watch: ')+label)+'">'+safe(spot.number)+(watched?'★':'')+'</button>';
+   const label='Space #'+spot.number+(scheduled?'; Scheduled auction item':'')+'; '+allocationLabel(spot)+'; '+countLabel(normalized)+'; '+(spot.type||'type unknown');
+   html+='<button type="button" class="spot '+kind+(scheduled?' scheduled':'')+(mine?' mine':'')+(watched?' watched':'')+'" data-property="'+safe(propertyId)+'" data-lot="'+safe(lot.id)+'" data-spot="'+safe(spot.id)+'" aria-pressed="'+watched+'" aria-label="'+safe(label)+'" title="'+safe('Click to '+(watched?'unwatch: ':'watch: ')+label)+'">'+safe(spot.number)+(watched?'★':'')+'</button>';
   }
   html+='</div><details><summary>Space details and reported counts</summary>';
   for(const spot of shown){

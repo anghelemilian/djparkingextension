@@ -2,3 +2,5 @@
 button.spot{border:0;cursor:pointer;font:inherit}button.spot:hover{filter:brightness(.96)}button.spot.watched{box-shadow:0 0 0 2px #e19b23 inset}button.spot.mine{outline:2px solid #19263d}button.spot:focus-visible{outline:3px solid #1c4a9b;outline-offset:2px}
 
 [hidden]{display:none!important}.settings input{display:block;width:100%;margin-top:4px;padding:7px;border:1px solid #cdd6e2;border-radius:7px;background:white}#filters label:first-child{flex:1.6}details{margin-top:8px}summary{cursor:pointer;font-size:12px;font-weight:600;color:#31579f}details .hint{line-height:1.5}.entry p{margin:5px 0}.card{overflow-wrap:anywhere}
+
+button.spot.scheduled{border-bottom:3px solid #7044b5}.auction-spaces{border-color:#d6c6eb}.auction-spaces h3{color:#59358d}
