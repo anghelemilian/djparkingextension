@@ -138,5 +138,13 @@ const routesFor = lot => ({'/api/person':person, '/api/ticket/1/5':{items:[]},
  assert.equal(s.properties[0].lots[0].auctionEntries.length,1,'only exact known spaces linked to valid auction items');
  assert.equal(s.properties[0].lots[0].auctionEntries[0].auctionId,6001);
  assert.equal(s.properties[0].lots[0].auctionEntries[0].itemId,7001);
+ const polygon={type:'Polygon',coordinates:[[[23.8,44.3],[23.8001,44.3],[23.8001,44.3001],[23.8,44.3]]],privateNote:'DO-NOT-RETAIN'};
+ h=harness(routesFor({...lot,geometry:polygon,residence_parking_spots:[{...lot.residence_parking_spots[0],geometry:polygon}]}));s=await h.collect();
+ assert.equal(s.properties[0].lots[0].geometry.type,'Polygon');
+ assert.equal(s.properties[0].lots[0].spots[0].geometry.coordinates[0].length,4);
+ assert.ok(!JSON.stringify(s).includes('DO-NOT-RETAIN'));
+ for(const geometry of [{type:'Point',coordinates:[23.8,44.3]},{type:'Polygon',coordinates:[[[999,44],[23,44],[23,45],[999,44]]]}, {type:'Polygon',coordinates:[[[23,44],[23.1,44],[23.1,44.1]]]}]){
+  h=harness(routesFor({...lot,geometry}));s=await h.collect();assert.equal(s.properties[0].lots[0].geometry,null,'malformed/unbounded geometry is omitted');
+ }
  console.log('All background tests passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});

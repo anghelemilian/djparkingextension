@@ -2,7 +2,7 @@
 
 Chrome Manifest V3 extension showing **authenticated building, lot and numbered-space inventory**, plus auction registration demand when it can be established. Inventory remains visible outside the selection period and does not require open applications or public auctions. This is read-only: no applications, bids, reservations or portal changes.
 
-## Install or reload 1.2.0
+## Install or reload 1.3.0
 
 1. Download/check out the extension revision and extract it if needed.
 2. Open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select the directory containing `manifest.json`. For an existing unpacked installation, update that same directory and click its **Reload** button.
@@ -47,9 +47,13 @@ node tests/model.test.js
 node tests/background.test.js
 node tests/popup.test.js
 node tests/auction-spaces.test.js
+node tests/map-model.test.js
+node tests/map-page.test.js
 node --check background.js
 node --check model.js
 node --check popup.js
+node --check map.js
+node --check map-model.js
 git diff --check
 ```
 
@@ -78,3 +82,15 @@ A scheduled entry requires an explicit `preauction` status and positive auction/
 The city describes validation of eligible applications before confirming auctions and communicating their dates: [official 2027 allocation guidance](https://www.primariacraiova.ro/ro/a/4042/atribuirea-locurilor-de-parcare-din-parc%C4%83rile-de-re%C8%99edin%C8%9B%C4%83%2C--valabile-%C3%AEncep%C3%A2nd-cu-1-ianuarie-2027). A count includes registrations, not necessarily validated eligible requests. If the portal has not exposed explicit auction items yet, the extension says no scheduled spaces are confirmed in the returned data; that does not mean none will go to auction later.
 
 No additional endpoints or permissions were added in 1.2.0. Stored building auction entries contain only auction/item/space IDs, allowlisted auction/item statuses and timezone-qualified start/end times. No personal data, bids, credentials or documents are added. Live authenticated item availability still needs verification after reload. Synthetic tests cover exact matching, independent/all auctions, count-only rejection, zero-count explicit schedules, inactive/ended/archived exclusion, own-feed matching, source conflicts, invalid/merged date intervals, deduplication, filtering and popup labels. A browser check verifies scheduled/ongoing sections, grid highlights, filter/search combinations and width with synthetic data.
+
+## 1.3.0: OpenStreetMap-based viewing
+
+Click **Open map** in the popup for a full-tab map. It verifies the portal account again before showing stored data. Select a building, search by space/lot, filter scheduled auctions/watched spaces/open applications, pan/zoom, or use **Fit parking area**. Purple spaces are explicitly scheduled auction items; orange borders are watches. Click a numbered polygon or sidebar row to inspect or watch/unwatch it. Counts and colors never establish allocation or occupancy. Map rendering requires WebGL.
+
+The default is a **local outline map with no external map requests**. **Enable OpenStreetMap background** loads an OpenStreetMap-based street map from [OpenFreeMap](https://openfreemap.org/quick_start/), which needs no account or API key. This sends the map viewport/tile area and your IP address to that provider. Your account ID, applications, watch list and private parking overlays are not sent. Consent is per open map session; changing account, refreshing verification or authentication failure removes the renderer and resets the background to off. A provider failure falls back to local outlines. No geolocation, geocoding, map telemetry, prefetch/offline scraping, bids or reservations are added.
+
+**Privacy change:** the reduced account-scoped local snapshot now includes sanitized Polygon/MultiPolygon coordinates for the linked building and its returned lots/spaces. This is location data; it stays in Chrome extension storage, alongside existing inventory, until replaced/cleared by the normal snapshot lifecycle. No geometry is added to count history or own-auction records. Source properties/owners/geometry metadata are dropped, malformed/unclosed/out-of-range coordinates are omitted, and each geometry is bounded to 16 polygons, 32 rings per polygon, 4096 vertices total, latitude ±85°, longitude ±180° and a maximum 1° span on either axis. Missing geometry is counted and never guessed from an address or lot name. Map data, building choices and provider consent clear on account invalidation; watches remain subject to the existing account-bound behavior.
+
+MapLibre GL JS **5.15.0** is pinned and bundled locally with its BSD-3-Clause license and a packaged CSP-compatible worker. Package SHA-512 was verified against official npm metadata; see `vendor/maplibre/README.md`. No CDN scripts or API credentials are used. Extension scripts/workers stay self-hosted; map resource connections are limited to `tiles.openfreemap.org` with credentials omitted. Remote style JSON, tiles, sprites and glyphs are map data, not JavaScript. Provider/style attribution remains visible on the map. No additional Chrome permissions or host permissions were requested.
+
+Verification includes the six Node suites, geometry reduction/account-switch/failure tests, and a real MapLibre browser check using synthetic polygons around a public landmark. That check confirmed zero provider requests before enabling, labels and scheduled filtering/selection, a live OpenFreeMap background, and overlay survival through background switches. The background switch uses a full style reload to reinstall local overlays. Actual municipal polygon placement and Chrome-extension CSP/worker behavior still need a live unpacked-extension reload check; synthetic localhost checks do not establish those.

@@ -8,6 +8,35 @@ let inFlight = null;
 // Executed in the authenticated portal tab. Return only dashboard fields,
 // not the person record, documents, or any authentication material.
 async function collect(radius) {
+ // Keep only bounded WGS84 polygon coordinates. No source feature properties,
+ // geometry metadata, owners or document fields cross into extension storage.
+ const geometry = value => {
+  if (!value || !['Polygon','MultiPolygon'].includes(value.type) || !Array.isArray(value.coordinates)) return null;
+  const polygons = value.type === 'Polygon' ? [value.coordinates] : value.coordinates;
+  if (!polygons.length || polygons.length > 16) return null;
+  let vertices = 0, minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  const clean = [];
+  for (const polygon of polygons) {
+   if (!Array.isArray(polygon) || !polygon.length || polygon.length > 32) return null;
+   const rings = [];
+   for (const ring of polygon) {
+    if (!Array.isArray(ring) || ring.length < 4 || (vertices += ring.length) > 4096) return null;
+    const points = [];
+    for (const point of ring) {
+     if (!Array.isArray(point) || point.length < 2 || !Number.isFinite(point[0]) || !Number.isFinite(point[1]) ||
+         Math.abs(point[0]) > 180 || Math.abs(point[1]) > 85) return null;
+     const [x,y] = point;
+     minX = Math.min(minX,x); maxX = Math.max(maxX,x); minY = Math.min(minY,y); maxY = Math.max(maxY,y);
+     points.push([x,y]);
+    }
+    if (points[0][0] !== points.at(-1)[0] || points[0][1] !== points.at(-1)[1]) return null;
+    rings.push(points);
+   }
+   clean.push(rings);
+  }
+  if (maxX - minX > 1 || maxY - minY > 1) return null;
+  return { type: value.type, coordinates: value.type === 'Polygon' ? clean[0] : clean };
+ };
  const get = async path => {
   const response = await fetch(path, {
    credentials: 'include',
@@ -135,7 +164,7 @@ async function collect(radius) {
      }
     }
     return {
-     id: lot.id, name: String(lot.name || 'Parking lot'), registrationState, inventoryStatus, auctionEntries,
+     geometry: geometry(lot.geometry), id: lot.id, name: String(lot.name || 'Parking lot'), registrationState, inventoryStatus, auctionEntries,
      auctionState, auctionId, auctionEnd: end, auctionData: lot.auctions == null ? 'not-returned' : Array.isArray(lot.auctions) && !lot.auctions.length ? 'empty' : 'returned',
      distance: lot.distance != null && lot.distance !== '' && Number.isFinite(Number(lot.distance)) ? Number(lot.distance) : null,
      spots: (Array.isArray(lot.residence_parking_spots) ? lot.residence_parking_spots : [])
@@ -143,7 +172,7 @@ async function collect(radius) {
       const item = items.get(String(s.id));
       const n = item?.registration_count;
       return {
-       id: s.id, number: s.number == null ? 'Unknown number' : String(s.number), type: s.spot_type, status: s.status,
+       geometry: geometry(s.geometry), id: s.id, number: s.number == null ? 'Unknown number' : String(s.number), type: s.spot_type, status: s.status,
        // Only the 'free' availability value is evidenced in the public frontend.
        // Other values (including inactive status) do not prove allocation.
        allocation: s.availability === 'free' ? 'unallocated' : 'unknown',
@@ -155,7 +184,7 @@ async function collect(radius) {
      })
     };
    });
-   out.properties.push({ id, name: String(data.name || 'Property ' + id), inventoryStatus, lots });
+   out.properties.push({ id, geometry: geometry(data.geometry), name: String(data.name || 'Property ' + id), inventoryStatus, lots });
   } catch (e) {
    out.warnings.push('Property ' + id + ': ' + e.message);
    // This ID is already verified through the account's active addresses.

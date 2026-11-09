@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Parking Watch — Map</title><link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css"><link rel="stylesheet" href="map.css">
+<script defer src="vendor/maplibre/maplibre-gl-csp.js"></script><script defer src="model.js"></script><script defer src="map-model.js"></script><script defer src="map.js"></script></head>
+<body><header><h1>Parking Watch · Map</h1><button id="refresh">Refresh account</button><button id="fit">Fit parking area</button></header>
+<div class="controls"><label>Building<select id="property"></select></label><label>Find a space<input id="search" type="search" placeholder="Number or lot name"></label><label>Show<select id="scope"><option value="all">All spaces</option><option value="scheduled">Scheduled auctions</option><option value="watched">Watched spaces</option><option value="mine">My open applications</option></select></label></div>
+<p id="status" role="status">Verifying account…</p>
+<div class="privacy"><button id="basemap" disabled>Enable OpenStreetMap background</button><span>Optional street map from OpenFreeMap. Enabling shares the viewed area and your IP with that provider; account details, parking outlines and watches stay local.</span></div>
+<main><div id="map" aria-label="Interactive parking map"></div><aside><h2>Parking spaces</h2><p>Purple: scheduled auction · Orange outline: watched. Other colors show reported registration demand, not allocation.</p><p id="coverage"></p><div id="selection">Select a numbered space on the map or in this list.</div><div id="spaces"></div></aside></main>
+<footer>Building and parking outlines: municipal portal. Missing geometry is never guessed. No geolocation, bids or reservations. Street map attribution appears on the map when enabled.</footer></body></html>

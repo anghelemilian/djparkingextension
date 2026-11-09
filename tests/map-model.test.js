@@ -1,0 +1,14 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const ctx={};for(const p of ['model.js','map-model.js'])vm.runInNewContext(fs.readFileSync(p,'utf8'),ctx);
+const geometry={type:'Polygon',coordinates:[[[23.8,44.3],[23.801,44.3],[23.801,44.301],[23.8,44.3]]]};
+const snapshot={properties:[{id:1,name:'Building',geometry,lots:[{id:2,name:'Lot',geometry,spots:[{id:3,number:'7',geometry,status:'active'},{id:4,number:'8',geometry:null}],auctionEntries:[{auctionId:5,itemId:6,spotId:3,status:'preauction',start:Date.now()+86400000,end:null}]}]}],tickets:[]};
+let result=ctx.ParkingMapModel.build(snapshot,1,[{propertyId:1,lotId:2,spotId:3}],'','all');
+assert.equal(result.collection.features.length,3);assert.equal(result.missing,1);assert.equal(result.mapped,1);
+const space=result.collection.features.find(f=>f.properties.kind==='space');assert.equal(space.properties.scheduled,true);assert.equal(space.properties.watched,true);
+assert.deepEqual(Array.from(result.bounds[0]),[23.8,44.3]);
+assert.equal(ctx.ParkingMapModel.build(snapshot,999,[],'','all').collection.features.length,0);
+assert.equal(ctx.ParkingMapModel.build(snapshot,1,[],'8','all').mapped,0);
+assert.equal(ctx.ParkingMapModel.build(snapshot,1,[],'','scheduled').mapped,1);
+assert.equal(ctx.ParkingMapModel.build(snapshot,1,[{propertyId:99,lotId:2,spotId:3}],'','watched').mapped,0);
+console.log('All map model tests passed');

@@ -121,3 +121,5 @@ $('interval').addEventListener('change',e=>configure({interval:Number(e.target.v
 $('radius').addEventListener('change',e=>configure({radius:Number(e.target.value)}));
 chrome.storage.onChanged.addListener((_changes,area)=>{if(area==='local')load()});
 refresh().finally(()=>{verifiedThisOpen=true;render()});
+
+$('open-map').addEventListener('click',()=>chrome.tabs.create({url:chrome.runtime.getURL('map.html')}));
