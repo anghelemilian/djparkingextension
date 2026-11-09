@@ -22,10 +22,18 @@ async function collect(radius) {
  // from a different account when /api/person is unavailable.
  const person = await get('/api/person');
  if (!person || typeof person._id !== 'string' || !person._id.trim() ||
-     !Array.isArray(person.address) || person.active === false) {
+     person.active === false) {
   throw Error('Unable to verify the signed-in account and its linked properties.');
  }
- const ids = [...new Set(person.address
+ // The current official frontend reads linked addresses from /immobiles.
+ // Keep the original person.address shape for existing portal versions.
+ let addresses = person.address;
+ if (!Array.isArray(addresses)) {
+  const linked = await get('/api/immobiles');
+  addresses = Array.isArray(linked?.address) ? linked.address : linked?.items;
+  if (!Array.isArray(addresses)) throw Error('Unexpected linked-property response.');
+ }
+ const ids = [...new Set(addresses
   .filter(a => a && a.active === true && Number.isSafeInteger(a.ID_IMOBIL) && a.ID_IMOBIL > 0)
   .map(a => a.ID_IMOBIL))].slice(0, 10);
 
@@ -33,7 +41,7 @@ async function collect(radius) {
  const digest = await crypto.subtle.digest('SHA-256',
   new TextEncoder().encode('craiova-parking-extension-account:' + person._id));
  const accountKey = Array.from(new Uint8Array(digest), n => n.toString(16).padStart(2, '0')).join('');
- const out = { accountKey, properties: [], tickets: [], ticketStatus: 'unknown', warnings: [], at: Date.now() };
+ const out = { schemaVersion: 2, accountKey, properties: [], tickets: [], ticketStatus: 'unknown', warnings: [], at: Date.now() };
 
  // A valid account with no linked addresses must not receive anybody else's lot.
  if (!ids.length) return out;
@@ -68,37 +76,69 @@ async function collect(radius) {
    const data = await get('/api/immobile/' + encodeURIComponent(id) +
     '?distance_to_parking_lot=' + encodeURIComponent(radius));
    // Reject wrong or malformed responses instead of attributing them to an address.
-   if (data?.id !== id || !Array.isArray(data.parking_lots)) throw Error('Unexpected property response');
-   const lots = data.parking_lots.map(lot => {
-    const auctions = [...(lot.auctions || [])].sort((a, b) =>
-     Number(b.auction_status === 'public') - Number(a.auction_status === 'public') ||
-     String(b.auction_start_date_time || '').localeCompare(String(a.auction_start_date_time || '')));
+   if (data?.id !== id) throw Error('Unexpected property response');
+   const inventoryStatus = Array.isArray(data.parking_lots) ? 'ok' : 'unknown';
+   if (inventoryStatus !== 'ok') out.warnings.push('Property ' + id + ': Parking-lot inventory unavailable; not a confirmed empty building.');
+   const lots = (Array.isArray(data.parking_lots) ? data.parking_lots : []).filter(lot => lot && Number.isSafeInteger(lot.id) && lot.id > 0).map(lot => {
+    const warn = detail => out.warnings.push('Property ' + id + ', lot ' + lot.id + ': ' + detail);
+    const inventoryStatus = Array.isArray(lot.residence_parking_spots) ? 'ok' : 'unknown';
+    if (inventoryStatus !== 'ok') warn('Numbered-space inventory missing or malformed; not a confirmed empty lot.');
+    const registrationState = lot.can_apply_for_auction === true ? 'eligible' :
+     lot.can_apply_for_auction === null && lot.can_apply_for_waitlist === true ? 'closed' : 'unknown';
+    if (lot.auctions != null && !Array.isArray(lot.auctions)) warn('Auction metadata malformed; inventory retained.');
+    const auctions = (Array.isArray(lot.auctions) ? lot.auctions : []).filter(a => a && !a.deleted_at);
+    // Only timezone-qualified timestamps establish chronology. Ambiguous dates
+    // must not turn an old public auction into a current opportunity.
+    const timestamp = value => typeof value === 'string' && /(?:Z|[+-]\d{2}:\d{2})$/i.test(value) &&
+     Number.isFinite(Date.parse(value)) ? Date.parse(value) : null;
+    const starts = auctions.map(a => timestamp(a.auction_start_date_time));
+    let auction = auctions.length === 1 ? auctions[0] : null;
+    if (auctions.length > 1 && starts.every(t => t !== null)) {
+     const latest = Math.max(...starts);
+     if (starts.filter(t => t === latest).length === 1) auction = auctions[starts.indexOf(latest)];
+    }
+    if (auctions.length && !auction) warn('Auction chronology ambiguous; counts unavailable.');
+    const end = timestamp(auction?.auction_end_date_time);
+    const auctionState = end !== null && end <= out.at ? 'ended' :
+     auction?.auction_status === 'public' ? 'public' : 'unknown';
+    const countKind = auctionState === 'ended' ? 'historical' : 'reported';
+    const auctionId = Number.isSafeInteger(auction?.id) && auction.id > 0 ? auction.id : null;
     const items = new Map();
-    for (const auction of auctions) for (const item of auction.items || []) {
-     if (item.deleted_at || items.has(String(item.id_res_parking_spot))) continue;
-     const n = item.registration_count;
-     items.set(String(item.id_res_parking_spot), {
-      count: Number.isInteger(n) && n >= 0 ? n : null,
-      publicAuction: auction.auction_status === 'public',
-      regime: item.parking_regime_efectiv || item.parking_regime
-     });
+    if (auction && !Array.isArray(auction.items)) warn('Auction items missing or malformed; counts unavailable.');
+    for (const item of Array.isArray(auction?.items) ? auction.items : []) {
+     if (!item || item.deleted_at || !Number.isSafeInteger(item.id_res_parking_spot)) continue;
+     const key = String(item.id_res_parking_spot);
+     // Duplicate entries are ambiguous, not evidence of zero demand.
+     if (items.has(key)) { items.set(key, null); continue; }
+     items.set(key, item);
     }
     return {
-     id: lot.id, name: String(lot.name || 'Parking lot'),
-     distance: Number.isFinite(Number(lot.distance)) ? Number(lot.distance) : null,
-     spots: (lot.residence_parking_spots || []).map(s => {
-      const auction = items.get(String(s.id));
+     id: lot.id, name: String(lot.name || 'Parking lot'), registrationState, inventoryStatus,
+     auctionState, auctionId, auctionEnd: end,
+     distance: lot.distance != null && lot.distance !== '' && Number.isFinite(Number(lot.distance)) ? Number(lot.distance) : null,
+     spots: (Array.isArray(lot.residence_parking_spots) ? lot.residence_parking_spots : [])
+      .filter(s => s && Number.isSafeInteger(s.id) && s.id > 0 && !s.deleted_at).map(s => {
+      const item = items.get(String(s.id));
+      const n = item?.registration_count;
       return {
-       id: s.id, number: String(s.number), type: s.spot_type, status: s.status,
-       count: auction?.count ?? null, publicAuction: auction?.publicAuction === true,
-       regime: auction?.regime || s.parking_regime_efectiv || null
+       id: s.id, number: s.number == null ? 'Unknown number' : String(s.number), type: s.spot_type, status: s.status,
+       // Only the 'free' availability value is evidenced in the public frontend.
+       // Other values (including inactive status) do not prove allocation.
+       allocation: s.availability === 'free' ? 'unallocated' : 'unknown',
+       count: auctionId !== null && Number.isInteger(n) && n >= 0 ? n : null,
+       countKind, auctionId, auctionState, auctionEnd: end, registrationState,
+       publicAuction: auctionState === 'public',
+       regime: item?.parking_regime_efectiv || item?.parking_regime || s.parking_regime_efectiv || null
       };
      })
     };
    });
-   out.properties.push({ id, name: String(data.name || 'Property ' + id), lots });
+   out.properties.push({ id, name: String(data.name || 'Property ' + id), inventoryStatus, lots });
   } catch (e) {
    out.warnings.push('Property ' + id + ': ' + e.message);
+   // This ID is already verified through the account's active addresses.
+   // Retain the linked building, without attributing a failed/wrong payload.
+   out.properties.push({ id, name: 'Linked building ' + id, inventoryStatus: 'unknown', lots: [] });
   }
  }));
  out.properties.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
@@ -146,11 +186,12 @@ async function refresh() {
    const saved = await chrome.storage.local.get(['snapshot', 'history', 'watches', 'propertyId', 'accountKey']);
    // Existing pre-fix snapshots have no accountKey, so they are never reused.
    const sameAccount = !!saved.accountKey && saved.accountKey === snapshot.accountKey;
+   const compatible = sameAccount && saved.snapshot?.schemaVersion === 2;
    const selected = sameAccount && snapshot.properties.some(p => p.id === saved.propertyId)
     ? saved.propertyId : (snapshot.properties[0]?.id ?? null);
    const watches = sameAccount ? (saved.watches || []) : [];
-   const recent = sameAccount ? ParkingModel.changes(saved.snapshot, snapshot) : [];
-   const history = sameAccount ? [...recent.reverse(), ...(saved.history || [])].slice(0, 50) : [];
+   const recent = compatible ? ParkingModel.changes(saved.snapshot, snapshot) : [];
+   const history = compatible ? [...recent.reverse(), ...(saved.history || [])].slice(0, 50) : [];
    await chrome.storage.local.set({
     accountKey: snapshot.accountKey, propertyId: selected,
     watches, history, snapshot, error: null

@@ -1,27 +1,34 @@
 'use strict';
 globalThis.ParkingModel = {
+ currentDemand(spot) {
+  return spot.publicAuction === true && spot.registrationState !== 'closed' &&
+   Number.isSafeInteger(spot.auctionId) && Number.isFinite(spot.auctionEnd) &&
+   spot.auctionEnd > Date.now() && Number.isInteger(spot.count) && spot.count >= 0;
+ },
  summarize(snapshot, propertyId, watches = []) {
   const property = (snapshot?.properties || []).find(p => String(p.id) === String(propertyId));
   const spaces = (property?.lots || []).flatMap(lot =>
-   (lot.spots || []).map(spot => ({ ...spot, lotId: lot.id, lotName: lot.name, distance: lot.distance })));
-  const auctioned = spaces.filter(s => s.publicAuction === true && Number.isInteger(s.count));
+   (lot.spots || []).map(spot => ({ ...spot,
+    auctionState: Number.isFinite(spot.auctionEnd) && spot.auctionEnd <= Date.now() ? 'ended' : spot.auctionState,
+    lotId: lot.id, lotName: lot.name, distance: lot.distance })));
+  const auctioned = spaces.filter(s => this.currentDemand(s));
   const ticketStatus = snapshot?.ticketStatus === 'ok' ? 'ok' : 'unknown';
   const own = (snapshot?.tickets || [])
    .filter(t => t.status === 'open' && t.type === 'LICITATIE_CRAIOVA' && String(t.propertyId) === String(propertyId))
-   .map(t => ({ ...t, space: spaces.find(s => String(s.id) === String(t.spotId)) }));
+   .map(t => ({ ...t, space: spaces.find(s => String(s.id) === String(t.spotId) && String(s.lotId) === String(t.lotId)) }));
   const watched = (watches || [])
    .filter(w => String(w.propertyId) === String(propertyId))
    .map(w => spaces.find(s => String(s.id) === String(w.spotId) && String(s.lotId) === String(w.lotId)))
    .filter(Boolean);
   const monitored = [...own.map(t => t.space).filter(Boolean), ...watched]
-   .filter((s, i, all) => all.findIndex(other => String(other.id) === String(s.id)) === i);
-  const competing = own.filter(t => t.space && t.space.count > 1);
-  const alerts = monitored.filter(s => Number.isInteger(s.count) && s.count > 1);
+   .filter((s, i, all) => all.findIndex(other => String(other.id) === String(s.id) && String(other.lotId) === String(s.lotId)) === i);
+  const competing = own.filter(t => t.space && this.currentDemand(t.space) && t.space.count > 1);
+  const alerts = monitored.filter(s => this.currentDemand(s) && s.count > 1);
   const mode = own.length ? 'monitoring' : ticketStatus === 'ok' ? 'discovery' : 'unknown';
   const ownIds = new Set(own.map(t => String(t.spotId)));
   const alternatives = (mode !== 'monitoring' || alerts.length > 0)
    ? auctioned
-      .filter(s => s.count === 0 && s.status === 'active' && s.type === 'normal' && !ownIds.has(String(s.id)))
+      .filter(s => s.registrationState === 'eligible' && s.count === 0 && s.status === 'active' && s.type === 'normal' && !ownIds.has(String(s.id)))
       .sort((a, b) => {
        const referenceLot = alerts[0]?.lotId;
        const sameLot = referenceLot == null ? 0 :
@@ -40,11 +47,11 @@ globalThis.ParkingModel = {
  changes(previous, current) {
   if (!previous) return [];
   const prior = new Map((previous.properties || []).flatMap(p =>
-   (p.lots || []).flatMap(l => (l.spots || []).map(s => [p.id + '/' + l.id + '/' + s.id, s.count]))));
+   (p.lots || []).flatMap(l => (l.spots || []).map(s => [p.id + '/' + l.id + '/' + s.id, s]))));
   return (current.properties || []).flatMap(p => (p.lots || []).flatMap(l => (l.spots || []).flatMap(s => {
    const old = prior.get(p.id + '/' + l.id + '/' + s.id);
-   return Number.isInteger(old) && Number.isInteger(s.count) && old !== s.count
-    ? [{ propertyId: p.id, lot: l.name, space: s.number, old, count: s.count, at: current.at }]
+   return old && this.currentDemand(old) && this.currentDemand(s) && old.auctionId === s.auctionId && old.count !== s.count
+    ? [{ propertyId: p.id, lot: l.name, space: s.number, old: old.count, count: s.count, auctionId: s.auctionId, at: current.at }]
     : [];
   })));
  }

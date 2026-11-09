@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Craiova Parking Watch",
-  "version": "1.0.1",
-  "description": "Residential parking auction registration monitoring and zero-registration alternatives",
+  "version": "1.0.2",
+  "description": "Authenticated building and parking-space inventory, with clearly labeled auction demand and lifecycle states",
   "permissions": [
     "storage",
     "alarms",
