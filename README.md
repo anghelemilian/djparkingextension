@@ -2,7 +2,7 @@
 
 Chrome Manifest V3 extension showing **authenticated building, lot and numbered-space inventory**, plus auction registration demand when it can be established. Inventory remains visible outside the selection period and does not require open applications or public auctions. This is read-only: no applications, bids, reservations or portal changes.
 
-## Install or reload 1.0.2
+## Install or reload 1.0.3
 
 1. Download/check out the extension revision and extract it if needed.
 2. Open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select the directory containing `manifest.json`. For an existing unpacked installation, update that same directory and click its **Reload** button.
@@ -53,3 +53,7 @@ git diff --check
 ```
 
 Tests cover off-season/no-auction inventory, malformed optional metadata, linked-address response shapes, ended/overlapping auctions, unknown allocation, missing inventory, ticket failure, wrong-property responses, account switches, authentication failure, count provenance and popup labels/escaping. Synthetic browser rendering checks layout but does not establish authenticated live compatibility.
+
+## API discovery and 1.0.3
+
+See [the frontend API map](docs/API-DISCOVERY.md) and [evidence catalogue](docs/api-call-sites.yaml) for 46 observed call signatures, method-specific side effects and lifecycle meanings. Version 1.0.3 adds evidenced preauction/ongoing/archived labels and distinguishes missing/empty auction data without adding API calls or permissions. Archived counts are historical; archived auctions do not prove allocation.

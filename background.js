@@ -100,8 +100,11 @@ async function collect(radius) {
     if (auctions.length && !auction) warn('Auction chronology ambiguous; counts unavailable.');
     const end = timestamp(auction?.auction_end_date_time);
     const auctionState = end !== null && end <= out.at ? 'ended' :
-     auction?.auction_status === 'public' ? 'public' : 'unknown';
-    const countKind = auctionState === 'ended' ? 'historical' : 'reported';
+     auction?.auction_status === 'public' ? 'public' :
+     auction?.auction_status === 'preauction' ? 'scheduled' :
+     auction?.auction_status === 'ongoing' ? 'ongoing' :
+     auction?.auction_status === 'archived' ? 'archived' : 'unknown';
+    const countKind = ['ended', 'archived'].includes(auctionState) ? 'historical' : 'reported';
     const auctionId = Number.isSafeInteger(auction?.id) && auction.id > 0 ? auction.id : null;
     const items = new Map();
     if (auction && !Array.isArray(auction.items)) warn('Auction items missing or malformed; counts unavailable.');
@@ -114,7 +117,7 @@ async function collect(radius) {
     }
     return {
      id: lot.id, name: String(lot.name || 'Parking lot'), registrationState, inventoryStatus,
-     auctionState, auctionId, auctionEnd: end,
+     auctionState, auctionId, auctionEnd: end, auctionData: lot.auctions == null ? 'not-returned' : Array.isArray(lot.auctions) && !lot.auctions.length ? 'empty' : 'returned',
      distance: lot.distance != null && lot.distance !== '' && Number.isFinite(Number(lot.distance)) ? Number(lot.distance) : null,
      spots: (Array.isArray(lot.residence_parking_spots) ? lot.residence_parking_spots : [])
       .filter(s => s && Number.isSafeInteger(s.id) && s.id > 0 && !s.deleted_at).map(s => {

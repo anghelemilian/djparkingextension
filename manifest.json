@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Craiova Parking Watch",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Authenticated building and parking-space inventory, with clearly labeled auction demand and lifecycle states",
   "permissions": [
     "storage",

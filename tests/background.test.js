@@ -59,6 +59,11 @@ const routesFor = lot => ({'/api/person':person, '/api/ticket/1/5':{items:[]},
  assert.equal(s.properties[0].lots[0].spots[0].auctionState, 'ended');
  assert.equal(s.properties[0].lots[0].spots[0].countKind, 'historical');
  assert.equal(h.ctx.ParkingModel.summarize(s,1001).alternatives.length,0);
+ for (const [status, expected] of [['preauction','scheduled'],['ongoing','ongoing'],['archived','archived']]) {
+  h = harness(routesFor({...ended,auctions:[{...ended.auctions[0],auction_status:status,auction_end_date_time:'2099-01-02T00:00:00Z'}]}));
+  s = await h.collect(); assert.equal(s.properties[0].lots[0].spots[0].auctionState,expected);
+  if (status==='archived') assert.equal(s.properties[0].lots[0].spots[0].countKind,'historical');
+ }
  for (const auctions of [undefined, null, [], [null], [{items:{}}]]) {
   h = harness(routesFor({...lot, auctions})); s = await h.collect();
   assert.equal(s.properties[0].lots[0].spots.length,1);

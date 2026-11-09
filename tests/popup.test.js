@@ -28,6 +28,10 @@ html=render({...snapshot,properties:[{id:1001,lots:[{...lot,spots:[],inventorySt
 assert.match(html,/Numbered-space inventory unavailable/);
 html=render({...snapshot,properties:[{id:1001,lots:[{...lot,spots:[]}]}]});
 assert.match(html,/No numbered spaces returned/);
+for (const [auctionState, label] of [['scheduled','Auction scheduled'],['ongoing','Bidding in progress'],['archived','Auction archived']]) {
+ html=render({...snapshot,properties:[{id:1001,lots:[{...lot,auctionState}]}]});
+ assert.ok(html.includes(label));
+}
 console.log('All popup tests passed');
 (async()=>{
  ctx.chrome.runtime.sendMessage=async()=>{throw Error('Service worker unavailable');};
